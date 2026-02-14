@@ -1,0 +1,12 @@
+## Interface: 30300
+## Title: TradeSkillMaster_Merchant
+## Notes: Replaces the default merchant window with a compact TSM-styled interface
+## Author: ksoltanidev
+## Version: 1.0.0
+## SavedVariables: AscensionTSM_MerchantDB
+## Dependencies: TradeSkillMaster
+
+Locale\enUS.lua
+TradeSkillMaster_Merchant.lua
+Modules\MerchantTab.lua
+Modules\ItemList.lua
