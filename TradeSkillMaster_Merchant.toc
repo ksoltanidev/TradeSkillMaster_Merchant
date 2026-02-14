@@ -8,5 +8,6 @@
 
 Locale\enUS.lua
 TradeSkillMaster_Merchant.lua
+Modules\BuyDialog.lua
 Modules\MerchantTab.lua
 Modules\ItemList.lua

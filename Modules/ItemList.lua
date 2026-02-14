@@ -44,7 +44,11 @@ function ItemList:CreateTab(parent)
 	local handlers = {
 		OnClick = function(_, data)
 			if data and data.index then
-				BuyMerchantItem(data.index, 1)
+				if IsShiftKeyDown() then
+					TSM.BuyDialog:Show(data.index)
+				else
+					BuyMerchantItem(data.index, 1)
+				end
 			end
 		end,
 		OnEnter = function(_, data, self)
