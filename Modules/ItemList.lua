@@ -72,21 +72,19 @@ function ItemList:CreateTab(parent)
 end
 
 local function FormatExtendedCost(index)
-	local numCosts = GetMerchantItemCostInfo(index)
-	if not numCosts or numCosts == 0 then return nil end
-
 	local parts = {}
-	for j = 1, numCosts do
-		local itemTexture, itemValue, itemLink, currencyName = GetMerchantItemCostItem(index, j)
-		if itemTexture and itemValue then
-			local name = currencyName or (itemLink and select(2, strsplit("|", itemLink)) or "") or "?"
-			tinsert(parts, format("|T%s:14|t %sx%d", itemTexture, name, itemValue))
+	for j = 1, 5 do
+		local itemTexture, itemValue, itemLink = GetMerchantItemCostItem(index, j)
+		if not itemTexture then break end
+		if itemValue and itemValue > 0 then
+			if itemLink then
+				tinsert(parts, format("|T%s:14|t %s x%d", itemTexture, itemLink, itemValue))
+			else
+				tinsert(parts, format("|T%s:14|t x%d", itemTexture, itemValue))
+			end
 		end
 	end
-
-	if #parts > 0 then
-		return table.concat(parts, " + ")
-	end
+	if #parts > 0 then return table.concat(parts, " + ") end
 	return nil
 end
 

@@ -154,21 +154,20 @@ function private:UpdateCost(dialog)
 end
 
 function private:FormatExtendedCostTotal(index, quantity)
-	local numCosts = GetMerchantItemCostInfo(index)
-	if not numCosts or numCosts == 0 then return nil end
-
 	local parts = {}
-	for j = 1, numCosts do
-		local itemTexture, itemValue, itemLink, currencyName = GetMerchantItemCostItem(index, j)
-		if itemTexture and itemValue then
+	for j = 1, 5 do
+		local itemTexture, itemValue, itemLink = GetMerchantItemCostItem(index, j)
+		if not itemTexture then break end
+		if itemValue and itemValue > 0 then
 			local totalValue = itemValue * quantity
-			tinsert(parts, format("|T%s:14|t x%d", itemTexture, totalValue))
+			if itemLink then
+				tinsert(parts, format("|T%s:14|t %s x%d", itemTexture, itemLink, totalValue))
+			else
+				tinsert(parts, format("|T%s:14|t x%d", itemTexture, totalValue))
+			end
 		end
 	end
-
-	if #parts > 0 then
-		return table.concat(parts, " + ")
-	end
+	if #parts > 0 then return table.concat(parts, " + ") end
 	return nil
 end
 
