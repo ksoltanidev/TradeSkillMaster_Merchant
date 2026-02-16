@@ -153,7 +153,8 @@ function private:CreatePlaceholderButtons(frame)
 	btn1:SetPoint("TOPLEFT", 5, -40)
 	btn1:SetHeight(20)
 	btn1:SetWidth(100)
-	btn1:SetText(L["Placeholder 1"])
+	btn1:SetText(L["Open Wishlist"])
+	btn1:SetScript("OnClick", function() TSM:ToggleWishlistWindow() end)
 	frame.btn1 = btn1
 
 	local btn2 = TSMAPI.GUI:CreateButton(frame, 15)

@@ -11,3 +11,5 @@ TradeSkillMaster_Merchant.lua
 Modules\BuyDialog.lua
 Modules\MerchantTab.lua
 Modules\ItemList.lua
+Modules\WishlistWindow.lua
+Modules\WishlistModal.lua

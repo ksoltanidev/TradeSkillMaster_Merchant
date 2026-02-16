@@ -14,6 +14,7 @@ TSM._version = GetAddOnMetadata("TradeSkillMaster_Merchant", "Version")
 local savedDBDefaults = {
 	global = {
 		defaultMerchantTab = true,
+		wishlist = {},
 	},
 }
 
@@ -38,5 +39,19 @@ function TSM:RegisterModule()
 		},
 	}
 
+	TSM.slashCommands = {
+		{
+			key = "merchantwish",
+			label = L["Toggle Wishlist window"],
+			callback = function() TSM:ToggleWishlistWindow() end,
+		},
+	}
+
 	TSMAPI:NewModule(TSM)
+end
+
+function TSM:ToggleWishlistWindow()
+	if TSM.WishlistWindow then
+		TSM.WishlistWindow:Toggle()
+	end
 end

@@ -43,7 +43,7 @@ function ItemList:CreateTab(parent)
 
 	local handlers = {
 		OnClick = function(_, data)
-			if data and data.index then
+			if data and data.index and not data.isSeparator then
 				if IsShiftKeyDown() then
 					TSM.BuyDialog:Show(data.index)
 				else
@@ -52,7 +52,7 @@ function ItemList:CreateTab(parent)
 			end
 		end,
 		OnEnter = function(_, data, self)
-			if data and data.index then
+			if data and data.index and not data.isSeparator then
 				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 				GameTooltip:SetMerchantItem(data.index)
 				GameTooltip:Show()
@@ -69,6 +69,25 @@ function ItemList:CreateTab(parent)
 
 	private.frame = frame
 	return frame
+end
+
+local function IsWishlistMatch(merchantName, merchantLink, wishlist)
+	for _, entry in ipairs(wishlist) do
+		-- Match by itemId if the wishlist entry has one
+		if entry.itemId and merchantLink then
+			local merchantItemId = tonumber(strmatch(merchantLink, "|Hitem:(%d+):"))
+			if merchantItemId and merchantItemId == entry.itemId then
+				return true
+			end
+		end
+		-- Match by name (case-insensitive substring)
+		if entry.name and merchantName then
+			if strfind(strlower(merchantName), strlower(entry.name), 1, true) then
+				return true
+			end
+		end
+	end
+	return false
 end
 
 local function FormatExtendedCost(index)
@@ -153,6 +172,46 @@ function private:MerchantUpdate()
 		end
 	end
 
-	private.frame.st:SetData(stData)
-	private.frame.topLabel:SetText(format(L["Showing %d items."], numItems))
+	-- Partition into wishlist matches and non-matches
+	local wishlist = TSM.db and TSM.db.global and TSM.db.global.wishlist
+	local matchedItems = {}
+	local normalItems = {}
+
+	if wishlist and #wishlist > 0 then
+		for _, rowData in ipairs(stData) do
+			local mName = GetMerchantItemInfo(rowData.index)
+			local mLink = GetMerchantItemLink(rowData.index)
+			if IsWishlistMatch(mName, mLink, wishlist) then
+				tinsert(matchedItems, rowData)
+			else
+				tinsert(normalItems, rowData)
+			end
+		end
+	else
+		normalItems = stData
+	end
+
+	-- Build final data: matched items, separator, then normal items
+	local finalData = {}
+	for _, row in ipairs(matchedItems) do
+		tinsert(finalData, row)
+	end
+
+	if #matchedItems > 0 and #normalItems > 0 then
+		local sepColor = TSMAPI.Design:GetInlineColor("link2")
+		local sepText = sepColor .. "--- " .. format(L["%d wishlist matches"], #matchedItems) .. " ---|r"
+		tinsert(finalData, { cols = { { value = sepText } }, isSeparator = true })
+	end
+
+	for _, row in ipairs(normalItems) do
+		tinsert(finalData, row)
+	end
+
+	private.frame.st:SetData(finalData)
+
+	if #matchedItems > 0 then
+		private.frame.topLabel:SetText(format(L["Showing %d items (%d wishlist matches)."], numItems, #matchedItems))
+	else
+		private.frame.topLabel:SetText(format(L["Showing %d items."], numItems))
+	end
 end
