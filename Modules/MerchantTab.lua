@@ -36,6 +36,12 @@ function MerchantTab:OnEnable()
 	MerchantTab:RegisterEvent("MERCHANT_SHOW", function()
 		TSMAPI:CreateTimeDelay("merchantShowDelay", 0, private.OnMerchantShow)
 	end)
+	MerchantTab:RegisterEvent("MERCHANT_CLOSED", function()
+		if private.frame and private.frame.searchBox then
+			private.frame.searchBox:SetText("")
+		end
+		TSM.ItemList:SetSearchFilter("")
+	end)
 end
 
 function private:OnMerchantShow()
@@ -149,6 +155,7 @@ function private:CreateMerchantTab()
 end
 
 function private:CreatePlaceholderButtons(frame)
+	-- btn1: Open Wishlist (unchanged)
 	local btn1 = TSMAPI.GUI:CreateButton(frame, 15)
 	btn1:SetPoint("TOPLEFT", 5, -40)
 	btn1:SetHeight(20)
@@ -157,19 +164,45 @@ function private:CreatePlaceholderButtons(frame)
 	btn1:SetScript("OnClick", function() TSM:ToggleWishlistWindow() end)
 	frame.btn1 = btn1
 
+	-- btn2: Out of Stock toggle
 	local btn2 = TSMAPI.GUI:CreateButton(frame, 15)
 	btn2:SetPoint("TOPLEFT", btn1, "TOPRIGHT", 5, 0)
 	btn2:SetHeight(20)
-	btn2:SetWidth(100)
-	btn2:SetText(L["Placeholder 2"])
+	btn2:SetWidth(120)
+	private:UpdateOutOfStockButtonText(btn2)
+	btn2:SetScript("OnClick", function()
+		TSM.db.global.showOutOfStock = not TSM.db.global.showOutOfStock
+		private:UpdateOutOfStockButtonText(btn2)
+		TSM.ItemList:RefreshDisplay()
+	end)
 	frame.btn2 = btn2
 
-	local btn3 = TSMAPI.GUI:CreateButton(frame, 15)
-	btn3:SetPoint("TOPLEFT", btn2, "TOPRIGHT", 5, 0)
-	btn3:SetPoint("TOPRIGHT", -5, -40)
-	btn3:SetHeight(20)
-	btn3:SetText(L["Placeholder 3"])
-	frame.btn3 = btn3
+	-- btn3: Search input
+	local searchBox = TSMAPI.GUI:CreateInputBox(frame)
+	searchBox:SetPoint("TOPLEFT", btn2, "TOPRIGHT", 5, 0)
+	searchBox:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -40)
+	searchBox:SetHeight(20)
+	searchBox:SetTextInsets(5, 5, 0, 0)
+	searchBox:SetScript("OnTextChanged", function(self)
+		TSM.ItemList:SetSearchFilter(self:GetText())
+	end)
+	searchBox:SetScript("OnEscapePressed", function(self)
+		self:SetText("")
+		self:ClearFocus()
+	end)
+	local placeholder = searchBox:CreateFontString(nil, "OVERLAY")
+	placeholder:SetFont(TSMAPI.Design:GetContentFont("small"))
+	placeholder:SetPoint("LEFT", 5, 0)
+	placeholder:SetText(L["Search..."])
+	placeholder:SetTextColor(0.5, 0.5, 0.5, 0.8)
+	searchBox.placeholder = placeholder
+	searchBox:SetScript("OnEditFocusGained", function(self)
+		self.placeholder:Hide()
+	end)
+	searchBox:SetScript("OnEditFocusLost", function(self)
+		if self:GetText() == "" then self.placeholder:Show() end
+	end)
+	frame.searchBox = searchBox
 
 	TSMAPI.GUI:CreateHorizontalLine(frame, -70)
 
@@ -179,4 +212,12 @@ function private:CreatePlaceholderButtons(frame)
 	content:SetPoint("BOTTOMRIGHT")
 
 	frame.itemListTab = TSM.ItemList:CreateTab(content)
+end
+
+function private:UpdateOutOfStockButtonText(btn)
+	if TSM.db.global.showOutOfStock then
+		btn:SetText(L["Hide Out of Stock"])
+	else
+		btn:SetText(L["Show Out of Stock"])
+	end
 end

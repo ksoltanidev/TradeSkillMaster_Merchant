@@ -15,6 +15,8 @@ local savedDBDefaults = {
 	global = {
 		defaultMerchantTab = true,
 		wishlist = {},
+		merchants = {},
+		showOutOfStock = false,
 	},
 }
 

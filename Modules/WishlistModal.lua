@@ -17,13 +17,14 @@ function WW:ShowAddItemModal()
 	if private.addItemModal then
 		private.addItemModal:Show()
 		private.modalItemBox:SetText("")
+		private.modalNoteBox:SetText("")
 		private.modalItemBox:SetFocus()
 		return
 	end
 
 	-- Create modal frame
 	local modal = CreateFrame("Frame", "TSMMerchantWishlistAddModal", UIParent)
-	modal:SetSize(320, 120)
+	modal:SetSize(320, 160)
 	modal:SetPoint("CENTER")
 	modal:SetFrameStrata("DIALOG")
 	modal:SetFrameLevel(110)
@@ -66,10 +67,27 @@ function WW:ShowAddItemModal()
 	itemBox:SetAutoFocus(false)
 	itemBox:SetFont(TSMAPI.Design:GetContentFont("small"))
 	itemBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-	itemBox:SetScript("OnEnterPressed", function()
+	itemBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+	private.modalItemBox = itemBox
+
+	-- Note label + EditBox
+	local noteLabel = modal:CreateFontString(nil, "OVERLAY")
+	noteLabel:SetFont(TSMAPI.Design:GetContentFont("small"))
+	noteLabel:SetText(L["Note (optional)"])
+	noteLabel:SetPoint("TOPLEFT", 15, -70)
+	TSMAPI.Design:SetWidgetTextColor(noteLabel)
+
+	local noteBox = CreateFrame("EditBox", "TSMMerchantWishlistModalNoteBox", modal, "InputBoxTemplate")
+	noteBox:SetPoint("TOPLEFT", 18, -83)
+	noteBox:SetPoint("TOPRIGHT", -18, -83)
+	noteBox:SetHeight(22)
+	noteBox:SetAutoFocus(false)
+	noteBox:SetFont(TSMAPI.Design:GetContentFont("small"))
+	noteBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+	noteBox:SetScript("OnEnterPressed", function()
 		WW:AddWishlistItem()
 	end)
-	private.modalItemBox = itemBox
+	private.modalNoteBox = noteBox
 
 	-- Add button
 	local addBtn = TSMAPI.GUI:CreateButton(modal, 14)
@@ -121,6 +139,8 @@ function WW:AddWishlistItem()
 	local input = private.modalItemBox and strtrim(private.modalItemBox:GetText()) or ""
 	if input == "" then return end
 
+	local noteInput = private.modalNoteBox and strtrim(private.modalNoteBox:GetText()) or ""
+
 	local entry = {}
 
 	-- Try to resolve as item link first
@@ -132,6 +152,11 @@ function WW:AddWishlistItem()
 	else
 		-- Plain text name entry
 		entry.name = input
+	end
+
+	-- Store note if provided
+	if noteInput ~= "" then
+		entry.note = noteInput
 	end
 
 	-- Check for duplicates (by name, case-insensitive)

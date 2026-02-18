@@ -55,6 +55,31 @@ function WW:Refresh()
 	WW:DrawRows()
 end
 
+function WW:AddFromMerchant(merchantIndex)
+	local name = GetMerchantItemInfo(merchantIndex)
+	local itemLink = GetMerchantItemLink(merchantIndex)
+	if not name then return end
+
+	local entry = { name = name }
+	if itemLink then
+		entry.itemLink = itemLink
+		entry.itemId = tonumber(strmatch(itemLink, "|Hitem:(%d+):"))
+	end
+
+	-- Duplicate check (case-insensitive name)
+	local lowerName = strlower(name)
+	for _, existing in ipairs(TSM.db.global.wishlist) do
+		if strlower(existing.name) == lowerName then
+			TSM:Print(format(L["'%s' is already in your wishlist."], name))
+			return
+		end
+	end
+
+	tinsert(TSM.db.global.wishlist, entry)
+	TSM:Print(format(L["Added '%s' to wishlist."], itemLink or name))
+	WW:Refresh()
+end
+
 -- ============================================================================= --
 -- Frame Creation
 -- ============================================================================= --
@@ -288,8 +313,12 @@ function WW:DrawRows()
 
 			if entry then
 				row:Show()
-				-- Display item link if available, otherwise name
-				row.itemText:SetText(entry.itemLink or entry.name)
+				-- Display item link if available, otherwise name + note in grey
+				local display = entry.itemLink or entry.name
+				if entry.note then
+					display = display .. " |cff999999(" .. entry.note .. ")|r"
+				end
+				row.itemText:SetText(display)
 
 				-- Setup delete button
 				row.deleteBtn:SetScript("OnClick", function()
