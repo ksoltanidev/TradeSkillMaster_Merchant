@@ -57,18 +57,22 @@ function ItemList:CreateTab(parent)
 	TSMAPI.Design:SetFrameColor(stContainer)
 
 	local handlers = {
-		OnClick = function(_, data)
+		OnClick = function(_, data, self, button)
 			if data and not data.isSeparator then
 				local link = data.itemLink or data.storedItemLink
 				if IsControlKeyDown() and link then
 					DressUpItemLink(link)
+				elseif IsShiftKeyDown() and button == "LeftButton" and link then
+					HandleModifiedItemClick(link)
 				elseif not data.isOutOfStock and data.index then
 					if IsAltKeyDown() then
 						TSM.WishlistWindow:AddFromMerchant(data.index)
-					elseif IsShiftKeyDown() then
-						TSM.BuyDialog:Show(data.index)
-					else
-						BuyMerchantItem(data.index, 1)
+					elseif button == "RightButton" then
+						if IsShiftKeyDown() then
+							TSM.BuyDialog:Show(data.index)
+						else
+							BuyMerchantItem(data.index, 1)
+						end
 					end
 				end
 			end
@@ -213,6 +217,7 @@ function private:MerchantUpdate()
 
 	-- Record persistent merchant data
 	RecordMerchantData()
+	TSM:InvalidateTooltipCache()
 
 	local numItems = GetMerchantNumItems()
 	local yellowColor = "|cffeeff00"

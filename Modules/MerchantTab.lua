@@ -41,6 +41,11 @@ function MerchantTab:OnEnable()
 			private.frame.searchBox:SetText("")
 		end
 		TSM.ItemList:SetSearchFilter("")
+		-- Reset MerchantFrame to default size so the default UI isn't permanently resized
+		if private.defaultWidth and private.defaultHeight then
+			MerchantFrame:SetWidth(private.defaultWidth)
+			MerchantFrame:SetHeight(private.defaultHeight)
+		end
 	end)
 end
 
@@ -97,6 +102,11 @@ function private:CreateMerchantTab()
 		MerchantFrameTab1:Show()
 		MerchantFrameTab2:Show()
 		private:ShowDefaultElements()
+		-- Reset size for default UI
+		if private.defaultWidth and private.defaultHeight then
+			MerchantFrame:SetWidth(private.defaultWidth)
+			MerchantFrame:SetHeight(private.defaultHeight)
+		end
 		MerchantFrameTab1:Click()
 	end
 
@@ -147,6 +157,34 @@ function private:CreateMerchantTab()
 	line:SetWidth(2)
 	line:SetHeight(30)
 	TSMAPI.GUI:CreateHorizontalLine(frame, -30)
+
+	-- Make MerchantFrame resizable
+	MerchantFrame:SetResizable(true)
+	MerchantFrame:SetMinResize(336, 357)
+	MerchantFrame:SetMaxResize(800, 600)
+	private.defaultWidth = MerchantFrame:GetWidth()
+	private.defaultHeight = MerchantFrame:GetHeight()
+
+	-- Resize handle (bottom-right corner, only visible on TSM tab)
+	local resizeHandle = CreateFrame("Frame", nil, frame)
+	resizeHandle:SetSize(16, 16)
+	resizeHandle:SetPoint("BOTTOMRIGHT", -1, 1)
+	resizeHandle:EnableMouse(true)
+	resizeHandle:SetScript("OnMouseDown", function()
+		MerchantFrame:StartSizing("BOTTOMRIGHT")
+	end)
+	resizeHandle:SetScript("OnMouseUp", function()
+		MerchantFrame:StopMovingOrSizing()
+	end)
+	local gripTex = resizeHandle:CreateTexture(nil, "OVERLAY")
+	gripTex:SetAllPoints()
+	gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+	resizeHandle:SetScript("OnEnter", function()
+		gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+	end)
+	resizeHandle:SetScript("OnLeave", function()
+		gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+	end)
 
 	-- Placeholder buttons
 	private:CreatePlaceholderButtons(frame)

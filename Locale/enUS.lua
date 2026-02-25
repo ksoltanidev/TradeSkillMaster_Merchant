@@ -31,3 +31,9 @@ L["Show Out of Stock"] = true
 L["Hide Out of Stock"] = true
 L["Out of Stock"] = true
 L["Search..."] = true
+
+-- Tooltip
+L["Enable Merchant tooltip info"] = true
+L["If checked, merchant price data will be displayed in item tooltips."] = true
+L["Show merchant price"] = true
+L["Display the merchant price (gold or tokens) in the tooltip."] = true
