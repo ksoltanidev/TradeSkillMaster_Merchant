@@ -5,6 +5,7 @@
 ## Version: 1.0.0
 ## SavedVariables: AscensionTSM_MerchantDB
 ## Dependencies: TradeSkillMaster
+## OptionalDeps: TradeSkillMaster_ItemTracker
 
 Locale\enUS.lua
 TradeSkillMaster_Merchant.lua

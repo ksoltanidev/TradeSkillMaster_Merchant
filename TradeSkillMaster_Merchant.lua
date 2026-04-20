@@ -17,9 +17,14 @@ local savedDBDefaults = {
 		wishlist = {},
 		merchants = {},
 		showOutOfStock = false,
+		hideUnderTokensEnabled = false,
+		hideUnderTokensThreshold = 1500,
+		groupByCategory = false,
+		hideOwned = false,
 		tooltip = {
 			enabled = true,
 			showMerchantPrice = true,
+			showLastSeen = true,
 		},
 	},
 }
@@ -55,6 +60,10 @@ function TSM:RegisterModule()
 
 	TSM.tooltipOptions = { callback = "Options:LoadTooltipOptions" }
 
+	TSM.priceSources = {
+		{ key = "BazaarPrice", label = L["Merchant - Bazaar Token Price"], callback = "GetBazaarPrice" },
+	}
+
 	TSMAPI:NewModule(TSM)
 end
 
@@ -62,6 +71,23 @@ function TSM:ToggleWishlistWindow()
 	if TSM.WishlistWindow then
 		TSM.WishlistWindow:Toggle()
 	end
+end
+
+-- ===================================================================================== --
+-- Price Source: BazaarPrice (1 token = 1g = 10000 copper)
+-- ===================================================================================== --
+
+local COPPER_PER_TOKEN = 10000
+
+function TSM:GetBazaarPrice(itemLink)
+	local itemString = TSMAPI:GetItemString(itemLink)
+	if not itemString then return nil end
+	local entry = TSM:GetMerchantEntry(itemString)
+	if not entry then return nil end
+	if not entry.extendedCost or not entry.costItems or #entry.costItems == 0 then return nil end
+	local tokenCount = entry.costItems[1].value
+	if not tokenCount or tokenCount <= 0 then return nil end
+	return tokenCount * COPPER_PER_TOKEN
 end
 
 -- ===================================================================================== --
@@ -136,8 +162,37 @@ function TSM:GetTooltip(itemString, quantity)
 		end
 	end
 
+	if TSM.db.global.tooltip.showLastSeen then
+		if entry.lastSeen then
+			local elapsed = time() - entry.lastSeen
+			local timeStr
+			if elapsed < 3600 then
+				timeStr = format("%dm ago", floor(elapsed / 60))
+			elseif elapsed < 86400 then
+				timeStr = format("%dh ago", floor(elapsed / 3600))
+			else
+				timeStr = format("%dd ago", floor(elapsed / 86400))
+			end
+			tinsert(text, { left = "  Last seen:", right = timeStr })
+		end
+	end
+
 	if #text > 0 then
 		tinsert(text, 1, "|cffffff00TSM Merchant:")
 		return text
 	end
+end
+
+-- ===================================================================================== --
+-- Public API for other addons (e.g., ChatSeller)
+-- ===================================================================================== --
+
+-- Look up merchant data for an itemString.
+-- Returns entry table and merchantName, or nil if not found.
+function TSM:GetMerchantEntry(itemString)
+	if not itemString then return nil end
+	local cache = GetItemMerchantCache()
+	local match = cache[itemString]
+	if not match then return nil end
+	return match.entry, match.merchantName
 end

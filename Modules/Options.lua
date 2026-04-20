@@ -27,10 +27,17 @@ function Options:LoadTooltipOptions(container)
 				},
 				{
 					type = "CheckBox",
-					label = L["Show merchant price"],
+					label = L["Show Ethereal Bazaar price"],
 					disabled = not TSM.db.global.tooltip.enabled,
 					settingInfo = { TSM.db.global.tooltip, "showMerchantPrice" },
 					tooltip = L["Display the merchant price (gold or tokens) in the tooltip."],
+				},
+				{
+					type = "CheckBox",
+					label = L["Show last seen time in Ethereal Bazaar"],
+					disabled = not TSM.db.global.tooltip.enabled,
+					settingInfo = { TSM.db.global.tooltip, "showLastSeen" },
+					tooltip = L["Display when the item was last seen at a merchant."],
 				},
 			},
 		},

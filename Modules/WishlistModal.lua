@@ -18,13 +18,14 @@ function WW:ShowAddItemModal()
 		private.addItemModal:Show()
 		private.modalItemBox:SetText("")
 		private.modalNoteBox:SetText("")
+		if private.modalPlayerBox then private.modalPlayerBox:SetText("") end
 		private.modalItemBox:SetFocus()
 		return
 	end
 
 	-- Create modal frame
 	local modal = CreateFrame("Frame", "TSMMerchantWishlistAddModal", UIParent)
-	modal:SetSize(320, 160)
+	modal:SetSize(320, 200)
 	modal:SetPoint("CENTER")
 	modal:SetFrameStrata("DIALOG")
 	modal:SetFrameLevel(110)
@@ -84,10 +85,27 @@ function WW:ShowAddItemModal()
 	noteBox:SetAutoFocus(false)
 	noteBox:SetFont(TSMAPI.Design:GetContentFont("small"))
 	noteBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-	noteBox:SetScript("OnEnterPressed", function()
+	noteBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+	private.modalNoteBox = noteBox
+
+	-- For Player label + EditBox
+	local playerLabel = modal:CreateFontString(nil, "OVERLAY")
+	playerLabel:SetFont(TSMAPI.Design:GetContentFont("small"))
+	playerLabel:SetText(L["For Player (optional)"])
+	playerLabel:SetPoint("TOPLEFT", 15, -110)
+	TSMAPI.Design:SetWidgetTextColor(playerLabel)
+
+	local playerBox = CreateFrame("EditBox", "TSMMerchantWishlistModalPlayerBox", modal, "InputBoxTemplate")
+	playerBox:SetPoint("TOPLEFT", 18, -123)
+	playerBox:SetPoint("TOPRIGHT", -18, -123)
+	playerBox:SetHeight(22)
+	playerBox:SetAutoFocus(false)
+	playerBox:SetFont(TSMAPI.Design:GetContentFont("small"))
+	playerBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+	playerBox:SetScript("OnEnterPressed", function()
 		WW:AddWishlistItem()
 	end)
-	private.modalNoteBox = noteBox
+	private.modalPlayerBox = playerBox
 
 	-- Add button
 	local addBtn = TSMAPI.GUI:CreateButton(modal, 14)
@@ -140,6 +158,7 @@ function WW:AddWishlistItem()
 	if input == "" then return end
 
 	local noteInput = private.modalNoteBox and strtrim(private.modalNoteBox:GetText()) or ""
+	local playerInput = private.modalPlayerBox and strtrim(private.modalPlayerBox:GetText()) or ""
 
 	local entry = {}
 
@@ -157,6 +176,11 @@ function WW:AddWishlistItem()
 	-- Store note if provided
 	if noteInput ~= "" then
 		entry.note = noteInput
+	end
+
+	-- Store player name if provided
+	if playerInput ~= "" then
+		entry.forPlayer = playerInput
 	end
 
 	-- Check for duplicates (by name, case-insensitive)

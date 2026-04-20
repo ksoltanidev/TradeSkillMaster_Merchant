@@ -20,11 +20,12 @@ local private = {
 	scrollFrame = nil,
 	NUM_ROWS = 10,
 	ROW_HEIGHT = 24,
+	sortedIndices = {},
 }
 WW._private = private
 
-local FRAME_WIDTH = 350
-local FRAME_HEIGHT = 320
+local FRAME_WIDTH = 550
+local FRAME_HEIGHT = 350
 
 -- ============================================================================= --
 -- Public API
@@ -81,6 +82,63 @@ function WW:AddFromMerchant(merchantIndex)
 end
 
 -- ============================================================================= --
+-- Sorting: acquired items first, then non-acquired
+-- ============================================================================= --
+
+local function BuildSortedIndices(wishlist)
+	wipe(private.sortedIndices)
+	-- Acquired items first
+	for i, entry in ipairs(wishlist) do
+		if entry.acquired then
+			tinsert(private.sortedIndices, i)
+		end
+	end
+	-- Then non-acquired
+	for i, entry in ipairs(wishlist) do
+		if not entry.acquired then
+			tinsert(private.sortedIndices, i)
+		end
+	end
+end
+
+-- ============================================================================= --
+-- Ping Logic
+-- ============================================================================= --
+
+local function SendPing(entry)
+	local playerName = entry.forPlayer
+	if not playerName or playerName == "" then
+		TSM:Print(L["No player name set for this item."])
+		return
+	end
+
+	local itemDisplay = entry.itemLink or entry.name
+
+	if entry.acquired then
+		-- Check if mailbox is open
+		if MailFrame and MailFrame:IsShown() then
+			-- Send whisper + mail
+			local whisperMsg = format(L["Hey! Your %s from Tiraxis is ready! Check your mailbox!"], itemDisplay)
+			SendChatMessage(whisperMsg, "WHISPER", nil, playerName)
+			-- Send mail
+			local mailSubject = format(L["Item acquired: %s"], entry.name)
+			local mailBody = format(L["Hey! Your %s from Tiraxis is ready!"], itemDisplay)
+			SendMail(playerName, mailSubject, mailBody)
+		else
+			-- Whisper only
+			local whisperMsg = format(L["Hey! Your %s from Tiraxis is ready!"], itemDisplay)
+			SendChatMessage(whisperMsg, "WHISPER", nil, playerName)
+		end
+	else
+		-- Not acquired yet - check-in whisper
+		local whisperMsg = format(L["Hey! It's me, just checking, do you still want the %s from Tiraxis?"], itemDisplay)
+		SendChatMessage(whisperMsg, "WHISPER", nil, playerName)
+	end
+
+	TSM:Print(format(L["Ping sent to %s."], playerName))
+end
+
+-- ============================================================================= --
 -- Frame Creation
 -- ============================================================================= --
 
@@ -96,8 +154,8 @@ function WW:CreateFrame()
 	frame:SetFrameStrata("HIGH")
 	TSMAPI.Design:SetFrameBackdropColor(frame)
 	frame:SetResizable(true)
-	frame:SetMinResize(300, 200)
-	frame:SetMaxResize(600, 500)
+	frame:SetMinResize(450, 200)
+	frame:SetMaxResize(900, 600)
 
 	-- Title
 	local title = TSMAPI.GUI:CreateLabel(frame)
@@ -231,17 +289,43 @@ function WW:CreateSingleRow(parent, index)
 		bgTex:SetAlpha(0.3)
 	end
 
-	-- Item text (takes most of the row width)
+	-- Acquired checkbox (left side)
+	local acquiredCB = CreateFrame("CheckButton", "TSMMerchantWishlistAcquiredCB" .. index, row, "UICheckButtonTemplate")
+	acquiredCB:SetSize(20, 20)
+	acquiredCB:SetPoint("LEFT", 2, 0)
+	acquiredCB:SetHitRectInsets(0, 0, 0, 0)
+	row.acquiredCB = acquiredCB
+
+	-- Item text (between checkbox and player input)
 	local itemText = row:CreateFontString(nil, "OVERLAY")
 	itemText:SetFont(TSMAPI.Design:GetContentFont("small"))
 	itemText:SetJustifyH("LEFT")
 	itemText:SetJustifyV("CENTER")
-	itemText:SetPoint("TOPLEFT", 4, 0)
-	itemText:SetPoint("BOTTOMRIGHT", -28, 0)
+	itemText:SetPoint("LEFT", acquiredCB, "RIGHT", 2, 0)
+	itemText:SetPoint("RIGHT", row, "RIGHT", -190, 0)
 	TSMAPI.Design:SetWidgetTextColor(itemText)
 	row.itemText = itemText
 
-	-- Delete button (right side)
+	-- Player name EditBox (right area)
+	local playerBox = CreateFrame("EditBox", "TSMMerchantWishlistPlayerBox" .. index, row, "InputBoxTemplate")
+	playerBox:SetSize(90, 18)
+	playerBox:SetPoint("RIGHT", row, "RIGHT", -62, 0)
+	playerBox:SetAutoFocus(false)
+	playerBox:SetFont(TSMAPI.Design:GetContentFont("small"))
+	playerBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+	playerBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+	row.playerBox = playerBox
+
+	-- Ping button
+	local pingBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+	pingBtn:SetSize(34, private.ROW_HEIGHT - 4)
+	pingBtn:SetPoint("LEFT", playerBox, "RIGHT", 2, 0)
+	pingBtn:SetText(L["Ping"])
+	pingBtn:SetNormalFontObject(GameFontNormalSmall)
+	pingBtn:SetHighlightFontObject(GameFontHighlightSmall)
+	row.pingBtn = pingBtn
+
+	-- Delete button (far right)
 	local deleteBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
 	deleteBtn:SetSize(22, private.ROW_HEIGHT - 4)
 	deleteBtn:SetPoint("RIGHT", -2, 0)
@@ -299,7 +383,11 @@ function WW:DrawRows()
 	local wishlist = TSM.db and TSM.db.global and TSM.db.global.wishlist
 	if not wishlist then return end
 
-	FauxScrollFrame_Update(private.scrollFrame, #wishlist, private.NUM_ROWS, private.ROW_HEIGHT)
+	-- Build sorted view (acquired first)
+	BuildSortedIndices(wishlist)
+
+	local totalItems = #private.sortedIndices
+	FauxScrollFrame_Update(private.scrollFrame, totalItems, private.NUM_ROWS, private.ROW_HEIGHT)
 	local offset = FauxScrollFrame_GetOffset(private.scrollFrame)
 
 	for i = 1, #private.rows do
@@ -308,19 +396,47 @@ function WW:DrawRows()
 		if i > private.NUM_ROWS then
 			row:Hide()
 		else
-			local dataIndex = i + offset
-			local entry = wishlist[dataIndex]
+			local sortedPos = i + offset
+			local dataIndex = private.sortedIndices[sortedPos]
+			local entry = dataIndex and wishlist[dataIndex]
 
 			if entry then
 				row:Show()
+
 				-- Display item link if available, otherwise name + note in grey
 				local display = entry.itemLink or entry.name
 				if entry.note then
 					display = display .. " |cff999999(" .. entry.note .. ")|r"
 				end
+				-- Dim acquired items
+				if entry.acquired then
+					display = "|cff66cc66" .. display .. "|r"
+				end
 				row.itemText:SetText(display)
 
-				-- Setup delete button
+				-- Acquired checkbox
+				row.acquiredCB:SetChecked(entry.acquired or false)
+				row.acquiredCB:SetScript("OnClick", function(self)
+					entry.acquired = self:GetChecked() and true or false
+					WW:Refresh()
+				end)
+
+				-- Player name box
+				row.playerBox._updating = true
+				row.playerBox:SetText(entry.forPlayer or "")
+				row.playerBox._updating = false
+				row.playerBox:SetScript("OnTextChanged", function(self)
+					if self._updating then return end
+					local text = strtrim(self:GetText())
+					entry.forPlayer = (text ~= "") and text or nil
+				end)
+
+				-- Ping button
+				row.pingBtn:SetScript("OnClick", function()
+					SendPing(entry)
+				end)
+
+				-- Delete button
 				row.deleteBtn:SetScript("OnClick", function()
 					tremove(TSM.db.global.wishlist, dataIndex)
 					WW:Refresh()

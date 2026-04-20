@@ -202,16 +202,14 @@ function private:CreatePlaceholderButtons(frame)
 	btn1:SetScript("OnClick", function() TSM:ToggleWishlistWindow() end)
 	frame.btn1 = btn1
 
-	-- btn2: Out of Stock toggle
+	-- btn2: Filters toggle (opens side panel)
 	local btn2 = TSMAPI.GUI:CreateButton(frame, 15)
 	btn2:SetPoint("TOPLEFT", btn1, "TOPRIGHT", 5, 0)
 	btn2:SetHeight(20)
-	btn2:SetWidth(120)
-	private:UpdateOutOfStockButtonText(btn2)
+	btn2:SetWidth(90)
+	btn2:SetText(L["Filters"])
 	btn2:SetScript("OnClick", function()
-		TSM.db.global.showOutOfStock = not TSM.db.global.showOutOfStock
-		private:UpdateOutOfStockButtonText(btn2)
-		TSM.ItemList:RefreshDisplay()
+		private:ToggleFiltersPanel(frame)
 	end)
 	frame.btn2 = btn2
 
@@ -252,10 +250,145 @@ function private:CreatePlaceholderButtons(frame)
 	frame.itemListTab = TSM.ItemList:CreateTab(content)
 end
 
-function private:UpdateOutOfStockButtonText(btn)
-	if TSM.db.global.showOutOfStock then
-		btn:SetText(L["Hide Out of Stock"])
-	else
-		btn:SetText(L["Show Out of Stock"])
+function private:ToggleFiltersPanel(frame)
+	if not private.filtersPanel then
+		private:CreateFiltersPanel(frame)
 	end
+	if private.filtersPanel:IsShown() then
+		private.filtersPanel:Hide()
+	else
+		private:SyncFiltersPanelState()
+		private.filtersPanel:Show()
+	end
+end
+
+function private:CreateFiltersPanel(parent)
+	local panel = CreateFrame("Frame", nil, parent)
+	panel:SetFrameStrata("HIGH")
+	panel:SetFrameLevel(parent:GetFrameLevel() + 20)
+	panel:SetWidth(220)
+	panel:SetHeight(175)
+	panel:SetPoint("TOPLEFT", parent, "TOPRIGHT", 2, 0)
+	TSMAPI.Design:SetFrameBackdropColor(panel)
+
+	-- Title
+	local title = TSMAPI.GUI:CreateLabel(panel)
+	title:SetPoint("TOPLEFT", 5, -5)
+	title:SetPoint("TOPRIGHT", -5, -5)
+	title:SetHeight(20)
+	title:SetJustifyH("CENTER")
+	title:SetText(L["Filters"])
+
+	TSMAPI.GUI:CreateHorizontalLine(panel, -28)
+
+	-- Show Out of Stock checkbox
+	local cbStock = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+	cbStock:SetSize(22, 22)
+	cbStock:SetPoint("TOPLEFT", 8, -38)
+	cbStock:SetHitRectInsets(0, -150, 0, 0)
+	cbStock:SetChecked(TSM.db.global.showOutOfStock)
+	cbStock:SetScript("OnClick", function(self)
+		TSM.db.global.showOutOfStock = self:GetChecked() and true or false
+		TSM.ItemList:RefreshDisplay()
+	end)
+	local lblStock = TSMAPI.GUI:CreateLabel(panel, "small")
+	lblStock:SetPoint("LEFT", cbStock, "RIGHT", 4, 0)
+	lblStock:SetHeight(22)
+	lblStock:SetWidth(170)
+	lblStock:SetJustifyH("LEFT")
+	lblStock:SetJustifyV("CENTER")
+	lblStock:SetText(L["Show Out of Stock"])
+	panel.cbStock = cbStock
+
+	-- Hide under X tokens checkbox
+	local cbHide = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+	cbHide:SetSize(22, 22)
+	cbHide:SetPoint("TOPLEFT", cbStock, "BOTTOMLEFT", 0, -4)
+	cbHide:SetHitRectInsets(0, -150, 0, 0)
+	cbHide:SetChecked(TSM.db.global.hideUnderTokensEnabled)
+	cbHide:SetScript("OnClick", function(self)
+		TSM.db.global.hideUnderTokensEnabled = self:GetChecked() and true or false
+		TSM.ItemList:RefreshDisplay()
+	end)
+	local lblHide = TSMAPI.GUI:CreateLabel(panel, "small")
+	lblHide:SetPoint("LEFT", cbHide, "RIGHT", 4, 0)
+	lblHide:SetHeight(22)
+	lblHide:SetWidth(170)
+	lblHide:SetJustifyH("LEFT")
+	lblHide:SetJustifyV("CENTER")
+	lblHide:SetText(L["Hide under X Bazaar tokens"])
+	panel.cbHide = cbHide
+
+	-- Threshold input box (indented under the Hide checkbox)
+	local input = TSMAPI.GUI:CreateInputBox(panel)
+	input:SetPoint("TOPLEFT", cbHide, "BOTTOMLEFT", 26, -4)
+	input:SetWidth(80)
+	input:SetHeight(20)
+	input:SetTextInsets(5, 5, 0, 0)
+	input:SetNumeric(true)
+	input:SetMaxLetters(6)
+	input:SetText(tostring(TSM.db.global.hideUnderTokensThreshold or 1500))
+	input:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+	input:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+	input:SetScript("OnEditFocusLost", function(self)
+		local n = tonumber(self:GetText())
+		if not n or n < 0 then n = 0 end
+		TSM.db.global.hideUnderTokensThreshold = n
+		self:SetText(tostring(n))
+		if TSM.db.global.hideUnderTokensEnabled then
+			TSM.ItemList:RefreshDisplay()
+		end
+	end)
+	panel.input = input
+
+	-- Group by category checkbox
+	local cbGroup = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+	cbGroup:SetSize(22, 22)
+	cbGroup:SetPoint("TOPLEFT", input, "BOTTOMLEFT", -26, -6)
+	cbGroup:SetHitRectInsets(0, -150, 0, 0)
+	cbGroup:SetChecked(TSM.db.global.groupByCategory)
+	cbGroup:SetScript("OnClick", function(self)
+		TSM.db.global.groupByCategory = self:GetChecked() and true or false
+		TSM.ItemList:RefreshDisplay()
+	end)
+	local lblGroup = TSMAPI.GUI:CreateLabel(panel, "small")
+	lblGroup:SetPoint("LEFT", cbGroup, "RIGHT", 4, 0)
+	lblGroup:SetHeight(22)
+	lblGroup:SetWidth(170)
+	lblGroup:SetJustifyH("LEFT")
+	lblGroup:SetJustifyV("CENTER")
+	lblGroup:SetText(L["Group by category"])
+	panel.cbGroup = cbGroup
+
+	-- Hide already possessed items checkbox
+	local cbOwned = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+	cbOwned:SetSize(22, 22)
+	cbOwned:SetPoint("TOPLEFT", cbGroup, "BOTTOMLEFT", 0, -4)
+	cbOwned:SetHitRectInsets(0, -170, 0, 0)
+	cbOwned:SetChecked(TSM.db.global.hideOwned)
+	cbOwned:SetScript("OnClick", function(self)
+		TSM.db.global.hideOwned = self:GetChecked() and true or false
+		TSM.ItemList:RefreshDisplay()
+	end)
+	local lblOwned = TSMAPI.GUI:CreateLabel(panel, "small")
+	lblOwned:SetPoint("LEFT", cbOwned, "RIGHT", 4, 0)
+	lblOwned:SetHeight(22)
+	lblOwned:SetWidth(180)
+	lblOwned:SetJustifyH("LEFT")
+	lblOwned:SetJustifyV("CENTER")
+	lblOwned:SetText(L["Hide already possessed items"])
+	panel.cbOwned = cbOwned
+
+	panel:Hide()
+	private.filtersPanel = panel
+end
+
+function private:SyncFiltersPanelState()
+	local p = private.filtersPanel
+	if not p then return end
+	p.cbStock:SetChecked(TSM.db.global.showOutOfStock)
+	p.cbHide:SetChecked(TSM.db.global.hideUnderTokensEnabled)
+	p.input:SetText(tostring(TSM.db.global.hideUnderTokensThreshold or 1500))
+	p.cbGroup:SetChecked(TSM.db.global.groupByCategory)
+	p.cbOwned:SetChecked(TSM.db.global.hideOwned)
 end

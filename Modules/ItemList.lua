@@ -14,6 +14,120 @@ local private = {
 	currentMerchantName = nil,
 }
 
+-- ============================================================================= --
+-- Category Detection (for "Group by category" filter)
+-- ============================================================================= --
+
+local CATEGORY_NAME_PREFIX_RULES = {
+	{ prefix = "Incarnation:",           category = "Incarnations"  },
+	{ prefix = "Beastmaster's Whistle:", category = "Whistles"      },
+	{ prefix = "Demon Scroll",           category = "Demon Scrolls" },
+	{ prefix = "Altar of",               category = "Altars"        },
+	{ prefix = "Illusion:",              category = "Illusions"     },
+}
+
+local CATEGORY_WEAPON_SUBCLASS = {
+	["One-Handed Swords"] = "Swords",
+	["Two-Handed Swords"] = "Swords",
+	["One-Handed Axes"]   = "Axes",
+	["Two-Handed Axes"]   = "Axes",
+	["One-Handed Maces"]  = "Maces",
+	["Two-Handed Maces"]  = "Maces",
+	["Daggers"]           = "Daggers",
+	["Staves"]            = "Staves",
+	["Polearms"]          = "Polearms",
+	["Fist Weapons"]      = "Fist Weapons",
+	["Bows"]              = "Bows",
+	["Guns"]              = "Guns",
+	["Crossbows"]         = "Crossbows",
+	["Wands"]             = "Wands",
+	["Thrown"]            = "Thrown",
+}
+
+local CATEGORY_ARMOR_EQUIPLOC = {
+	["INVTYPE_HEAD"]     = "Head",
+	["INVTYPE_SHOULDER"] = "Shoulders",
+	["INVTYPE_CHEST"]    = "Chest",
+	["INVTYPE_ROBE"]     = "Chest",
+	["INVTYPE_WRIST"]    = "Wrist",
+	["INVTYPE_HAND"]     = "Gloves",
+	["INVTYPE_WAIST"]    = "Waist",
+	["INVTYPE_LEGS"]     = "Legs",
+	["INVTYPE_FEET"]     = "Feet",
+	["INVTYPE_CLOAK"]    = "Back",
+}
+
+-- Hidden tooltip scanner for reading description lines (e.g., cosmetic set caches)
+local tooltipScanner
+local function IsCosmeticSetItem(itemLink)
+	if not itemLink then return false end
+	if not tooltipScanner then
+		tooltipScanner = CreateFrame("GameTooltip", "TSMMerchantTooltipScanner", nil, "GameTooltipTemplate")
+		tooltipScanner:SetOwner(WorldFrame, "ANCHOR_NONE")
+	end
+	tooltipScanner:ClearLines()
+	tooltipScanner:SetHyperlink(itemLink)
+	for i = 1, tooltipScanner:NumLines() do
+		local line = _G["TSMMerchantTooltipScannerTextLeft" .. i]
+		local text = line and line:GetText()
+		if text and strfind(text, '^"A [Cc]osmetic [Ss]et') then
+			return true
+		end
+	end
+	return false
+end
+
+-- Returns (category, subCategory) — subCategory is nil for non-Weapons/non-Armor.
+local function DetectCategory(itemLink, itemName)
+	if itemName then
+		for _, rule in ipairs(CATEGORY_NAME_PREFIX_RULES) do
+			if strsub(itemName, 1, #rule.prefix) == rule.prefix then
+				return rule.category, nil
+			end
+		end
+	end
+
+	if not itemLink then return "Other", nil end
+
+	-- Cosmetic set caches (grant a full armor set)
+	if IsCosmeticSetItem(itemLink) then
+		return "Armor", "Armor sets"
+	end
+
+	local _, _, _, _, _, itemType, itemSubType, _, equipLoc = GetItemInfo(itemLink)
+	if not itemType then return "Other", nil end
+
+	-- Mount detection (Miscellaneous > Mount on 3.3.5)
+	if itemType == "Miscellaneous" and itemSubType == "Mount" then
+		return "Mounts", nil
+	end
+
+	-- Weapons
+	local weaponSub = CATEGORY_WEAPON_SUBCLASS[itemSubType]
+	if weaponSub then return "Weapons", weaponSub end
+	if equipLoc == "INVTYPE_SHIELD"   then return "Weapons", "Shields"  end
+	if equipLoc == "INVTYPE_HOLDABLE" then return "Weapons", "Offhands" end
+
+	-- Armor
+	local armorSub = CATEGORY_ARMOR_EQUIPLOC[equipLoc]
+	if armorSub then return "Armor", armorSub end
+	if equipLoc == "INVTYPE_BODY" then return "Armor", "Tabards" end
+
+	return "Other", nil
+end
+
+-- Stable sort order for categories
+local CATEGORY_ORDER = {
+	"Mounts", "Incarnations", "Demon Scrolls", "Whistles", "Altars", "Illusions",
+	"Weapons", "Armor", "Other",
+}
+local CATEGORY_RANK = {}
+for i, name in ipairs(CATEGORY_ORDER) do CATEGORY_RANK[name] = i end
+
+local function GetCategoryRank(cat)
+	return CATEGORY_RANK[cat] or 999
+end
+
 function ItemList:OnEnable()
 	ItemList:RegisterEvent("MERCHANT_SHOW")
 	TSMAPI:CreateEventBucket("MERCHANT_UPDATE", private.MerchantUpdate, 0.3)
@@ -223,10 +337,27 @@ function private:MerchantUpdate()
 	local yellowColor = "|cffeeff00"
 	local greyColor = "|cff999999"
 	local searchFilter = private.searchFilter or ""
+	local hideUnderEnabled = TSM.db.global.hideUnderTokensEnabled
+	local hideThreshold = TSM.db.global.hideUnderTokensThreshold or 0
+	local groupByCategory = TSM.db.global.groupByCategory
+	local hideOwned = TSM.db.global.hideOwned
+	local ItemTracker = hideOwned and LibStub("AceAddon-3.0"):GetAddon("TSM_ItemTracker", true) or nil
+
+	local function IsOwned(itemString)
+		if not ItemTracker or not itemString then return false end
+		local pt, at = ItemTracker:GetPlayerTotal(itemString)
+		local total = (pt or 0) + (at or 0)
+			+ (ItemTracker:GetGuildTotal(itemString) or 0)
+			+ (ItemTracker:GetAuctionsTotal(itemString) or 0)
+			+ (ItemTracker:GetPersonalBanksTotal(itemString) or 0)
+			+ (ItemTracker:GetRealmBankTotal(itemString) or 0)
+		return total > 0
+	end
 
 	-- Build live items and track which keys are live
 	local stData = {}
 	local liveItemKeys = {}
+	local hiddenByTokenCount = 0
 
 	for i = 1, numItems do
 		local name, texture, price, quantity, numAvailable, isUsable, extendedCost = GetMerchantItemInfo(i)
@@ -239,59 +370,75 @@ function private:MerchantUpdate()
 
 			-- Apply search filter
 			if searchFilter == "" or strfind(strlower(name), searchFilter, 1, true) then
-				local parts = {}
-
-				-- Icon
-				if texture then
-					tinsert(parts, format("|T%s:14|t", texture))
+				-- Apply hide-under-tokens filter (strictly less than threshold)
+				local hideByToken = false
+				if hideUnderEnabled and extendedCost then
+					local _, costValue = GetMerchantItemCostItem(i, 1)
+					if costValue and costValue < hideThreshold then
+						hideByToken = true
+					end
 				end
 
-				-- Item link or name
-				if itemLink then
-					tinsert(parts, itemLink)
+				-- Apply hide-owned filter
+				local hideByOwned = hideOwned and IsOwned(itemString)
+
+				if hideByToken or hideByOwned then
+					if hideByToken then hiddenByTokenCount = hiddenByTokenCount + 1 end
 				else
-					tinsert(parts, name)
-				end
+					local parts = {}
 
-				-- Quantity per purchase (if > 1)
-				if quantity and quantity > 1 then
-					tinsert(parts, format("(x%d)", quantity))
-				end
-
-				-- Availability
-				if numAvailable and numAvailable ~= -1 then
-					tinsert(parts, yellowColor .. format("(%d %s)", numAvailable, L["left"]) .. "|r")
-				end
-
-				-- Separator
-				tinsert(parts, "|")
-
-				-- Price
-				if extendedCost then
-					local costStr = FormatExtendedCost(i)
-					if costStr then
-						tinsert(parts, costStr)
+					-- Icon
+					if texture then
+						tinsert(parts, format("|T%s:14|t", texture))
 					end
-					if price and price > 0 then
-						tinsert(parts, "+ " .. TSMAPI:FormatTextMoney(price))
+
+					-- Item link or name
+					if itemLink then
+						tinsert(parts, itemLink)
+					else
+						tinsert(parts, name)
 					end
-				elseif price and price > 0 then
-					tinsert(parts, TSMAPI:FormatTextMoney(price))
+
+					-- Quantity per purchase (if > 1)
+					if quantity and quantity > 1 then
+						tinsert(parts, format("(x%d)", quantity))
+					end
+
+					-- Availability
+					if numAvailable and numAvailable ~= -1 then
+						tinsert(parts, yellowColor .. format("(%d %s)", numAvailable, L["left"]) .. "|r")
+					end
+
+					-- Separator
+					tinsert(parts, "|")
+
+					-- Price
+					if extendedCost then
+						local costStr = FormatExtendedCost(i)
+						if costStr then
+							tinsert(parts, costStr)
+						end
+						if price and price > 0 then
+							tinsert(parts, "+ " .. TSMAPI:FormatTextMoney(price))
+						end
+					elseif price and price > 0 then
+						tinsert(parts, TSMAPI:FormatTextMoney(price))
+					end
+
+					local text = table.concat(parts, " ")
+
+					-- Grey out unusable items
+					if not isUsable then
+						text = greyColor .. text .. "|r"
+					end
+
+					tinsert(stData, {
+						cols = { { value = text } },
+						index = i,
+						itemName = name,
+						itemLink = itemLink,
+					})
 				end
-
-				local text = table.concat(parts, " ")
-
-				-- Grey out unusable items
-				if not isUsable then
-					text = greyColor .. text .. "|r"
-				end
-
-				tinsert(stData, {
-					cols = { { value = text } },
-					index = i,
-					itemName = name,
-					itemLink = itemLink,
-				})
 			end
 		end
 	end
@@ -305,30 +452,44 @@ function private:MerchantUpdate()
 				if not liveItemKeys[key] then
 					-- Apply search filter
 					if searchFilter == "" or strfind(strlower(entry.name), searchFilter, 1, true) then
-						local parts = {}
-						if entry.texture then
-							tinsert(parts, format("|T%s:14|t", entry.texture))
-						end
-						tinsert(parts, entry.itemLink or entry.name)
-						if entry.quantity and entry.quantity > 1 then
-							tinsert(parts, format("(x%d)", entry.quantity))
-						end
-						tinsert(parts, greyColor .. "(" .. L["Out of Stock"] .. ")" .. "|r")
-						tinsert(parts, "|")
-						local priceStr = FormatStoredPrice(entry)
-						if priceStr ~= "" then
-							tinsert(parts, priceStr)
+						-- Apply hide-under-tokens filter
+						local hideByToken = false
+						if hideUnderEnabled and entry.extendedCost and entry.costItems and entry.costItems[1] then
+							local v = entry.costItems[1].value
+							if v and v < hideThreshold then hideByToken = true end
 						end
 
-						local text = greyColor .. table.concat(parts, " ") .. "|r"
-						tinsert(stData, {
-							cols = { { value = text } },
-							isOutOfStock = true,
-							storedItemLink = entry.itemLink,
-							itemName = entry.name,
-							itemLink = entry.itemLink,
-						})
-						outOfStockCount = outOfStockCount + 1
+						-- Apply hide-owned filter
+						local hideByOwned = hideOwned and IsOwned(entry.itemString or key)
+
+						if hideByToken or hideByOwned then
+							if hideByToken then hiddenByTokenCount = hiddenByTokenCount + 1 end
+						else
+							local parts = {}
+							if entry.texture then
+								tinsert(parts, format("|T%s:14|t", entry.texture))
+							end
+							tinsert(parts, entry.itemLink or entry.name)
+							if entry.quantity and entry.quantity > 1 then
+								tinsert(parts, format("(x%d)", entry.quantity))
+							end
+							tinsert(parts, greyColor .. "(" .. L["Out of Stock"] .. ")" .. "|r")
+							tinsert(parts, "|")
+							local priceStr = FormatStoredPrice(entry)
+							if priceStr ~= "" then
+								tinsert(parts, priceStr)
+							end
+
+							local text = greyColor .. table.concat(parts, " ") .. "|r"
+							tinsert(stData, {
+								cols = { { value = text } },
+								isOutOfStock = true,
+								storedItemLink = entry.itemLink,
+								itemName = entry.name,
+								itemLink = entry.itemLink,
+							})
+							outOfStockCount = outOfStockCount + 1
+						end
 					end
 				end
 			end
@@ -364,8 +525,47 @@ function private:MerchantUpdate()
 		tinsert(finalData, { cols = { { value = sepText } }, isSeparator = true })
 	end
 
-	for _, row in ipairs(normalItems) do
-		tinsert(finalData, row)
+	if groupByCategory then
+		-- Tag each item with its category, then sort and inject separators
+		for _, row in ipairs(normalItems) do
+			local cat, subCat = DetectCategory(row.itemLink, row.itemName)
+			row._category = cat
+			row._subCategory = subCat
+		end
+		table.sort(normalItems, function(a, b)
+			local ra, rb = GetCategoryRank(a._category), GetCategoryRank(b._category)
+			if ra ~= rb then return ra < rb end
+			local sa, sb = a._subCategory or "", b._subCategory or ""
+			if sa ~= sb then return sa < sb end
+			return (a.itemName or "") < (b.itemName or "")
+		end)
+
+		local sepColor = TSMAPI.Design:GetInlineColor("link2")
+		local lastCat, lastSub = nil, nil
+		for _, row in ipairs(normalItems) do
+			if row._category ~= lastCat then
+				local label = L[row._category] or row._category
+				tinsert(finalData, {
+					cols = { { value = sepColor .. "--- " .. label .. " ---|r" } },
+					isSeparator = true,
+				})
+				lastCat = row._category
+				lastSub = nil
+			end
+			if row._subCategory and row._subCategory ~= lastSub then
+				local subLabel = L[row._subCategory] or row._subCategory
+				tinsert(finalData, {
+					cols = { { value = sepColor .. "--- " .. subLabel .. " ---|r" } },
+					isSeparator = true,
+				})
+				lastSub = row._subCategory
+			end
+			tinsert(finalData, row)
+		end
+	else
+		for _, row in ipairs(normalItems) do
+			tinsert(finalData, row)
+		end
 	end
 
 	private.frame.st:SetData(finalData)
